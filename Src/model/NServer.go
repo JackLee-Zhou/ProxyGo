@@ -1,4 +1,4 @@
-package Src
+package model
 
 type NServer interface {
 	Start()
