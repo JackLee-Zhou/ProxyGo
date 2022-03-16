@@ -22,13 +22,26 @@ type Socket5 struct {
 
 // socket5流程  Auth -> Connect -> Forward
 
-func (socket *Socket5) Process(client *net.TCPConn) error {
+func (socket *Socket5) Process(client net.Conn) error {
+	if err := socket.Auth(client); err != nil {
+		fmt.Println("auth error:", err)
+		client.Close()
+		return err
+	}
 
+	target, err := socket.Connect(client)
+	if err != nil {
+		fmt.Println("connect error:", err)
+		client.Close()
+		return err
+	}
+
+	socket.Forward(client, target)
 	return nil
 }
 
 // 客户先发言
-func (socket *Socket5) Auth(client *net.TCPConn) error {
+func (socket *Socket5) Auth(client net.Conn) error {
 	buffer := make([]byte, 257)
 	// 先读前连个字节的 VER NMETHODS
 	n, err := io.ReadFull(client, buffer[:2])
@@ -68,7 +81,7 @@ func (socket *Socket5) Auth(client *net.TCPConn) error {
 	return nil
 }
 
-func (socket *Socket5) Connect(client *net.TCPConn) (net.Conn, error) {
+func (socket *Socket5) Connect(client net.Conn) (net.Conn, error) {
 	//	和服务器完成协商过后，告诉服务器具体的目标地址
 	//	格式：VER CMD RSV ATYP DST.ADDR DST.PORT
 	// VER protocol version: X’05’
@@ -160,10 +173,16 @@ func (socket *Socket5) Connect(client *net.TCPConn) (net.Conn, error) {
 		dial.Close()
 		return nil, errors.New("write rsp: " + err.Error())
 	}
+	ProxyLog.Info.Println(dial.RemoteAddr().String(), " ", dial.LocalAddr().String())
 	return dial, nil
 }
 
-func (socket *Socket5) Forward(client *net.TCPConn) error {
-	//TODO implement me
-	panic("implement me")
+func (socket *Socket5) Forward(client, target net.Conn) {
+	forward := func(src, dest net.Conn) {
+		defer src.Close()
+		defer dest.Close()
+		io.Copy(src, dest)
+	}
+	go forward(client, target)
+	go forward(target, client)
 }
